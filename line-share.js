@@ -6,6 +6,7 @@
   const RESUME_QUERY_KEY = "lineShareResume";
   const RESUME_DATA_KEY = "lineShareData";
   const RESUME_HASH_PREFIX = "#eri-line-share=";
+  const HANDOVER_KEY = "eriArcana.lineShare.handedOver.v1";
   const PENDING_TTL = 30 * 60 * 1000;
   const SETTINGS_KEY = "eriArcana.localMemory.settings.v1";
   const PLACEHOLDER_ID = "請在這裡貼上你的_LIFF_ID";
@@ -590,11 +591,18 @@ ${input.cardLines}`;
   const buildLiffResumeUrl = (payload) => {
     const id = encodeURIComponent(String(config().LIFF_ID).trim());
     const data = encodeBase64Url(compactPayload(payload));
-    const query = new URLSearchParams({
-      [RESUME_QUERY_KEY]: "1",
-      [RESUME_DATA_KEY]: data,
-    });
-    return `https://liff.line.me/${id}/?${query.toString()}`;
+    const query = new URLSearchParams({ [RESUME_QUERY_KEY]: "1" });
+    /*
+     * The reading itself rides in the URL fragment rather than the query
+     * string. LINE folds query parameters into `liff.state`, which round-trips
+     * through their server and has a length ceiling that a ten-card spread with
+     * Chinese card names can exceed — a truncated payload decodes to null and
+     * the resume silently dies. Fragments are never sent to a server, and
+     * browsers carry them across 3xx redirects, so the data arrives intact.
+     * `readResumePayload()` already reads either location, and `readPending()`
+     * still falls back to storage if the fragment is dropped.
+     */
+    return `https://liff.line.me/${id}/?${query.toString()}${RESUME_HASH_PREFIX}${data}`;
   };
 
   const buildLoginRedirectUrl = () => {
@@ -656,6 +664,42 @@ ${input.cardLines}`;
   const isSubwindowError = (error) =>
     errorCode(error) === "EXCEPTION_IN_SUBWINDOW";
 
+  const liffHandOverUsed = () => {
+    try {
+      return window.sessionStorage.getItem(HANDOVER_KEY) === "1";
+    } catch {
+      return false;
+    }
+  };
+
+  const markLiffHandOver = () => {
+    try {
+      window.sessionStorage.setItem(HANDOVER_KEY, "1");
+    } catch {
+      // A missing marker only risks one extra hand-over attempt.
+    }
+  };
+
+  const clearLiffHandOver = () => {
+    try {
+      window.sessionStorage.removeItem(HANDOVER_KEY);
+    } catch {
+      // Best effort only.
+    }
+  };
+
+  /*
+   * A mobile external browser can hold a valid LINE Login session and still be
+   * refused by shareTargetPicker, because the picker additionally needs an SSO
+   * session. That is the one case where handing the reading over to the LIFF
+   * browser genuinely helps — and it is only worth one attempt per session.
+   */
+  const canHandOverToLiff = (error) => {
+    if (!isMobileExternalBrowser() || liffHandOverUsed()) return false;
+    const code = errorCode(error);
+    return code === "UNAUTHORIZED" || code === "401" || code === "";
+  };
+
   const getTargetPickerDiagnostic = () => {
     let context = null;
     try {
@@ -714,16 +758,14 @@ ${input.cardLines}`;
       await initializeLiff();
 
       /*
-       * Mobile external browsers can complete LIFF login yet still lack the
-       * SSO session required by shareTargetPicker. Open the official LIFF URL
-       * instead, carrying a short-lived copy of the reading in the fragment.
-       * LINE then runs the picker inside the supported LIFF browser.
+       * Log in first, in every environment. shareTargetPicker is supported in
+       * external browsers as long as an SSO session exists, so the ordinary
+       * LINE Login screen has to stay reachable on phones too. This branch used
+       * to sit behind an `isMobileExternalBrowser()` early return, which meant
+       * liff.login() could never run on a phone: the page jumped straight to
+       * liff.line.me and, if LINE did not catch it, the user was stranded with
+       * no login screen and no way back.
        */
-      if (isMobileExternalBrowser()) {
-        openMobileLiffResume(rawPayload);
-        return;
-      }
-
       if (!window.liff.isLoggedIn()) {
         savePending(rawPayload);
         window.liff.login({ redirectUri: buildLoginRedirectUrl() });
@@ -738,16 +780,37 @@ ${input.cardLines}`;
 
       const payload = await resolveCardImages(rawPayload);
       savePending(payload);
-      const result = await window.liff.shareTargetPicker(
-        [
-          buildFlexMessage(payload),
-          { type: "text", text: payload.prompt },
-        ],
-        { isMultiple: true },
-      );
+
+      let result;
+      try {
+        result = await window.liff.shareTargetPicker(
+          [
+            buildFlexMessage(payload),
+            { type: "text", text: payload.prompt },
+          ],
+          { isMultiple: true },
+        );
+      } catch (pickerError) {
+        /*
+         * Only now, after the picker has actually refused, do we fall back to
+         * the LIFF browser. Doing it up front removed the login step entirely.
+         */
+        if (canHandOverToLiff(pickerError)) {
+          console.info("[Eri Arcana LINE share: hand over to LIFF]", {
+            error: pickerError,
+            diagnostic: getTargetPickerDiagnostic(),
+          });
+          markLiffHandOver();
+          showToast("正在用 LINE 開啟分享…", { duration: 4000 });
+          openMobileLiffResume(payload);
+          return;
+        }
+        throw pickerError;
+      }
 
       if (result?.status === "success") {
         clearPending();
+        clearLiffHandOver();
         showToast("已分享至 LINE ✦");
       } else {
         showToast("已取消分享");
