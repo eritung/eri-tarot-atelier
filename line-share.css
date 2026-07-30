@@ -181,6 +181,7 @@
 @media (max-width: 680px) {
   .prompt-actions .line-share-button {
     width: 100%;
+    margin-bottom: 0.8rem;
   }
 
   .topbar .line-share-button.is-pending {

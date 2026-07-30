@@ -352,11 +352,45 @@ ${cardLines}
       throw new Error("LINE 分享元件載入失敗，請確認網路後再試一次。");
     }
     if (!initPromise) {
-      initPromise = window.liff.init({
-        liffId: String(config().LIFF_ID).trim(),
-      });
+      initPromise = window.liff
+        .init({
+          liffId: String(config().LIFF_ID).trim(),
+        })
+        .catch((error) => {
+          // A temporary SDK or network failure should not poison every retry.
+          initPromise = null;
+          throw error;
+        });
     }
     await initPromise;
+  };
+
+  const canAttemptTargetPicker = () => {
+    const isAvailable = window.liff.isApiAvailable("shareTargetPicker");
+    if (isAvailable) return true;
+
+    /*
+     * In an external browser the SDK can occasionally report stale
+     * availability after the channel setting was just enabled. The API itself
+     * supports external browsers, so let the real call return the useful error
+     * instead of blocking desktop users here.
+     */
+    return !window.liff.isInClient();
+  };
+
+  const friendlyShareError = (error) => {
+    const code = String(error?.code || "");
+
+    if (code === "UNAUTHORIZED" || code === "401") {
+      return "LINE 登入狀態已失效，請重新登入後再試一次。";
+    }
+    if (code === "FORBIDDEN" || code === "403") {
+      return "聊天室選擇器尚未對此 LIFF 頻道生效，請確認已啟用 shareTargetPicker 後重新整理。";
+    }
+    if (code === "EXCEPTION_IN_SUBWINDOW") {
+      return "LINE 選擇視窗已逾時，請關閉後再按一次分享。";
+    }
+    return error?.message || "LINE 分享暫時無法使用";
   };
 
   const updateShareButtons = (busy, label) => {
@@ -386,9 +420,9 @@ ${cardLines}
         return;
       }
 
-      if (!window.liff.isApiAvailable("shareTargetPicker")) {
+      if (!canAttemptTargetPicker()) {
         throw new Error(
-          "目前環境無法開啟聊天室選擇器，請改用 LINE 開啟此網站。",
+          "目前的 LINE App 版本不支援聊天室選擇器，請更新 LINE 後再試一次。",
         );
       }
 
@@ -413,7 +447,7 @@ ${cardLines}
         openSetupModal();
       } else {
         console.error("[Eri Arcana LINE share]", error);
-        showToast(error?.message || "LINE 分享暫時無法使用");
+        showToast(friendlyShareError(error));
       }
     } finally {
       shareBusy = false;
