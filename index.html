@@ -1750,6 +1750,15 @@
         font-weight: 400;
         text-shadow: 0 2px 12px rgba(255, 255, 255, 0.55);
       }
+      /*
+       * 貓咪牌面會由使用者自行替換完整圖片。
+       * 只移除網站疊加的中央光圈與牌義圖示，保留上下牌名文字；
+       * Aurora 牌組不符合這個選擇器，因此維持原本樣式。
+       */
+      .card-face-art[style*="decks/cat/"] .card-aura,
+      .card-face-art[style*="decks/cat/"] .card-symbol {
+        display: none;
+      }
       .card-name {
         position: absolute;
         bottom: 8%;
