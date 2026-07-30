@@ -8,7 +8,8 @@
   const RESUME_HASH_PREFIX = "#eri-line-share=";
   const PENDING_TTL = 30 * 60 * 1000;
   const SETTINGS_KEY = "eriArcana.localMemory.settings.v1";
-  const PLACEHOLDER_ID = "2010900471-Lp7tUAMy";
+  const PLACEHOLDER_ID = "請在這裡貼上你的_LIFF_ID";
+  const BUILT_IN_LIFF_ID = "2010900471-Lp7tUAMy";
 
   const MAJOR_NAMES = [
     "愚者",
@@ -70,7 +71,21 @@
   let toastTimer;
   let resumeAttempted = false;
 
-  const config = () => window.ERI_LINE_CONFIG || {};
+  const config = () => {
+    const current = window.ERI_LINE_CONFIG || {};
+    const configuredId = String(current.LIFF_ID || "").trim();
+    const liffId =
+      configuredId &&
+      configuredId !== PLACEHOLDER_ID &&
+      !configuredId.includes("請在這裡")
+        ? configuredId
+        : BUILT_IN_LIFF_ID;
+
+    return {
+      ...current,
+      LIFF_ID: liffId,
+    };
+  };
 
   const hasLiffId = () => {
     const id = String(config().LIFF_ID || "").trim();
