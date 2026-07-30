@@ -90,12 +90,14 @@
     const patch = {};
     const spread = selectedText(".spread-option.is-active strong");
     const deck = selectedText(".deck-option.is-active strong");
+    const deckScope = selectedText(".scope-option.is-active strong");
     const reverse = document.querySelector(".toggle-row input");
     const question = document.querySelector(".question-field textarea");
     const choiceInputs = document.querySelectorAll(".choice-fields input");
 
     if (spread) patch.spread = spread;
     if (deck) patch.deck = deck;
+    if (deckScope) patch.deckScope = deckScope;
     if (reverse) patch.reverse = reverse.checked;
     if (question) patch.question = question.value;
     if (choiceInputs[0]) patch.choiceA = choiceInputs[0].value;
@@ -140,6 +142,7 @@
     const settings = readSettings();
     clickMatchingOption(".spread-option", settings.spread);
     clickMatchingOption(".deck-option", settings.deck);
+    clickMatchingOption(".scope-option", settings.deckScope);
 
     const reverse = document.querySelector(".toggle-row input");
     if (reverse && typeof settings.reverse === "boolean") {
@@ -210,6 +213,7 @@
       question,
       spread: settings.spread || "",
       deck: settings.deck || "",
+      deckScope: settings.deckScope || "",
       reverse: settings.reverse ?? true,
       choiceA: settings.choiceA || "",
       choiceB: settings.choiceB || "",
@@ -226,6 +230,7 @@
       `【日期】${formatDate(record.createdAt)}`,
       record.spread ? `【牌陣】${record.spread}` : "",
       record.deck ? `【牌面】${record.deck}` : "",
+      record.deckScope ? `【牌池】${record.deckScope}` : "",
       record.choiceA ? `【選項 A】${record.choiceA}` : "",
       record.choiceB ? `【選項 B】${record.choiceB}` : "",
       "",
@@ -287,7 +292,9 @@
             </div>
             <p class="memory-card-meta">
               ${escapeHtml(
-                [record.spread, record.deck].filter(Boolean).join(" · ") ||
+                [record.spread, record.deck, record.deckScope]
+                  .filter(Boolean)
+                  .join(" · ") ||
                   "塔羅抽牌",
               )}
             </p>
@@ -454,7 +461,7 @@
     (event) => {
       if (
         event.target.closest(
-          ".spread-option, .deck-option, .primary-button, .step-back",
+          ".spread-option, .deck-option, .scope-option, .primary-button, .step-back",
         )
       ) {
         window.setTimeout(collectSettings, 80);

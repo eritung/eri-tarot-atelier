@@ -203,13 +203,18 @@
       settings.question ||
       "我目前最需要知道的訊息是什麼？";
     const spread = settings.spread || "塔羅牌陣";
+    const deckScope = settings.deckScope || "";
+    const promptSpread = deckScope
+      ? `${spread}｜牌池：${deckScope}`
+      : spread;
 
     return {
       question,
       spread,
       deck: settings.deck || "",
+      deckScope,
       cards,
-      prompt: buildPrompt({ question, spread, cards }),
+      prompt: buildPrompt({ question, spread: promptSpread, cards }),
     };
   };
 
