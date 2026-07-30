@@ -1,7 +1,11 @@
 (() => {
   "use strict";
 
-  const PENDING_KEY = "eriArcana.lineShare.pending.v1";
+  const PENDING_KEY = "eriArcana.lineShare.pending.v2";
+  const LEGACY_PENDING_KEY = "eriArcana.lineShare.pending.v1";
+  const RESUME_QUERY_KEY = "lineShareResume";
+  const RESUME_HASH_PREFIX = "#eri-line-share=";
+  const PENDING_TTL = 30 * 60 * 1000;
   const SETTINGS_KEY = "eriArcana.localMemory.settings.v1";
   const PLACEHOLDER_ID = "請在這裡貼上你的_LIFF_ID";
 
@@ -63,6 +67,10 @@
   let permissionModal;
   let failedSharePayload;
   let toastTimer;
+  let resumeAttempted = false;
+  let resumeRequested =
+    new URLSearchParams(window.location.search).get(RESUME_QUERY_KEY) === "1" ||
+    window.location.hash.startsWith(RESUME_HASH_PREFIX);
 
   const config = () => window.ERI_LINE_CONFIG || {};
 
@@ -79,7 +87,73 @@
     }
   };
 
-  const showToast = (message) => {
+  const encodeBase64Url = (value) => {
+    const bytes = new TextEncoder().encode(JSON.stringify(value));
+    let binary = "";
+    bytes.forEach((byte) => {
+      binary += String.fromCharCode(byte);
+    });
+    return window
+      .btoa(binary)
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/g, "");
+  };
+
+  const decodeBase64Url = (value) => {
+    const base64 = String(value || "")
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+    const binary = window.atob(padded);
+    const bytes = Uint8Array.from(binary, (character) =>
+      character.charCodeAt(0),
+    );
+    return parseJson(new TextDecoder().decode(bytes), null);
+  };
+
+  const compactPayload = (payload) => ({
+    question: payload.question || "",
+    spread: payload.spread || "",
+    deck: payload.deck || "",
+    deckScope: payload.deckScope || "",
+    cards: (payload.cards || []).map((card) => ({
+      name: card.name || "",
+      english: card.english || "",
+      orientation: card.orientation || "正位",
+      position: card.position || "",
+      imageDeck: card.imageDeck === "cat" ? "cat" : "aurora",
+    })),
+    savedAt: Date.now(),
+  });
+
+  const readResumeHash = () => {
+    if (!window.location.hash.startsWith(RESUME_HASH_PREFIX)) return null;
+    try {
+      return decodeBase64Url(
+        window.location.hash.slice(RESUME_HASH_PREFIX.length),
+      );
+    } catch (error) {
+      console.warn("[Eri Arcana LINE share: invalid resume payload]", error);
+      return null;
+    }
+  };
+
+  const cleanResumeUrl = () => {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete(RESUME_QUERY_KEY);
+      if (url.hash.startsWith(RESUME_HASH_PREFIX)) url.hash = "";
+      window.history.replaceState(null, "", url.href);
+    } catch {
+      // URL cleanup is cosmetic and must never block sharing.
+    }
+  };
+
+  const showToast = (
+    message,
+    { actionLabel = "", onAction = null, duration = 2200 } = {},
+  ) => {
     let toast = document.querySelector(".line-share-toast");
     if (!toast) {
       toast = document.createElement("div");
@@ -88,12 +162,37 @@
       toast.setAttribute("aria-live", "polite");
       document.body.appendChild(toast);
     }
-    toast.textContent = message;
+    toast.replaceChildren();
+    const text = document.createElement("span");
+    text.className = "line-share-toast-text";
+    text.textContent = message;
+    toast.appendChild(text);
+
+    const hasAction =
+      Boolean(actionLabel) && typeof onAction === "function";
+    toast.classList.toggle("has-action", hasAction);
+    if (hasAction) {
+      const action = document.createElement("button");
+      action.type = "button";
+      action.className = "line-share-toast-action";
+      action.textContent = actionLabel;
+      action.addEventListener(
+        "click",
+        () => {
+          window.clearTimeout(toastTimer);
+          toast.classList.remove("is-visible");
+          onAction();
+        },
+        { once: true },
+      );
+      toast.appendChild(action);
+    }
+
     toast.classList.add("is-visible");
     window.clearTimeout(toastTimer);
     toastTimer = window.setTimeout(
       () => toast.classList.remove("is-visible"),
-      2200,
+      duration,
     );
   };
 
@@ -269,6 +368,7 @@ ${input.cardLines}`;
           card.orientation,
           card.imageDeck,
         );
+        if (!card.imageUrl) return { ...card, imageUrl: fallback };
         if (card.imageUrl === fallback) return card;
         const works = await isReachableImage(card.imageUrl);
         return { ...card, imageUrl: works ? card.imageUrl : fallback };
@@ -356,30 +456,101 @@ ${input.cardLines}`;
   };
 
   const savePending = (payload) => {
+    const pending = { ...payload, savedAt: Date.now() };
     try {
       window.sessionStorage.setItem(
         PENDING_KEY,
-        JSON.stringify({ ...payload, savedAt: Date.now() }),
+        JSON.stringify(pending),
       );
     } catch {
-      // Session storage is optional; sharing still works in a LIFF browser.
+      // Keep trying the persistent fallback below.
     }
+    try {
+      window.localStorage.setItem(PENDING_KEY, JSON.stringify(pending));
+    } catch {
+      // URL resume data still covers the mobile LIFF handoff.
+    }
+  };
+
+  const hydratePayload = (payload) => {
+    if (!payload?.cards?.length || payload.prompt) return payload;
+    const promptSpread = payload.deckScope
+      ? `${payload.spread || "塔羅牌陣"}｜牌池：${payload.deckScope}`
+      : payload.spread || "塔羅牌陣";
+    return {
+      ...payload,
+      prompt: buildPrompt({
+        question:
+          payload.question || "我目前最需要知道的訊息是什麼？",
+        spread: promptSpread,
+        cards: payload.cards,
+      }),
+    };
   };
 
   const readPending = () => {
-    const pending = parseJson(
-      window.sessionStorage.getItem(PENDING_KEY),
-      null,
-    );
-    if (!pending || Date.now() - Number(pending.savedAt || 0) > 30 * 60 * 1000) {
-      window.sessionStorage.removeItem(PENDING_KEY);
+    const fromHash = readResumeHash();
+    if (fromHash?.cards?.length) {
+      const hydrated = hydratePayload(fromHash);
+      savePending(hydrated);
+      cleanResumeUrl();
+      return hydrated;
+    }
+
+    let pending = null;
+    try {
+      pending =
+        parseJson(window.sessionStorage.getItem(PENDING_KEY), null) ||
+        parseJson(window.localStorage.getItem(PENDING_KEY), null) ||
+        parseJson(window.sessionStorage.getItem(LEGACY_PENDING_KEY), null);
+    } catch {
+      // Storage can be unavailable in private or restricted browser contexts.
+    }
+    if (!pending || Date.now() - Number(pending.savedAt || 0) > PENDING_TTL) {
+      clearPending();
       return null;
     }
-    return pending;
+    return hydratePayload(pending);
   };
 
   const clearPending = () => {
-    window.sessionStorage.removeItem(PENDING_KEY);
+    try {
+      window.sessionStorage.removeItem(PENDING_KEY);
+      window.sessionStorage.removeItem(LEGACY_PENDING_KEY);
+    } catch {
+      // Storage cleanup is best effort.
+    }
+    try {
+      window.localStorage.removeItem(PENDING_KEY);
+      window.localStorage.removeItem(LEGACY_PENDING_KEY);
+    } catch {
+      // Storage cleanup is best effort.
+    }
+  };
+
+  const isMobileExternalBrowser = () => {
+    if (!window.liff || window.liff.isInClient()) return false;
+    const os = String(window.liff.getOS?.() || "").toLowerCase();
+    if (os === "ios" || os === "android") return true;
+    return /Android|iPhone|iPad|iPod/i.test(window.navigator.userAgent || "");
+  };
+
+  const buildLiffResumeUrl = (payload) => {
+    const id = encodeURIComponent(String(config().LIFF_ID).trim());
+    const data = encodeBase64Url(compactPayload(payload));
+    return `https://liff.line.me/${id}?${RESUME_QUERY_KEY}=1${RESUME_HASH_PREFIX}${data}`;
+  };
+
+  const buildLoginRedirectUrl = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.set(RESUME_QUERY_KEY, "1");
+    url.hash = "";
+    return url.href;
+  };
+
+  const openMobileLiffResume = (payload) => {
+    savePending(payload);
+    window.location.assign(buildLiffResumeUrl(payload));
   };
 
   const initializeLiff = async () => {
@@ -426,6 +597,9 @@ ${input.cardLines}`;
     return code === "FORBIDDEN" || code === "403";
   };
 
+  const isSubwindowError = (error) =>
+    errorCode(error) === "EXCEPTION_IN_SUBWINDOW";
+
   const getTargetPickerDiagnostic = () => {
     let context = null;
     try {
@@ -459,9 +633,6 @@ ${input.cardLines}`;
     if (code === "UNAUTHORIZED" || code === "401") {
       return "LINE 登入狀態已失效，請重新登入後再試一次。";
     }
-    if (code === "EXCEPTION_IN_SUBWINDOW") {
-      return "LINE 選擇視窗已逾時，請關閉後再按一次分享。";
-    }
     return error?.message || "LINE 分享暫時無法使用";
   };
 
@@ -486,9 +657,20 @@ ${input.cardLines}`;
     try {
       await initializeLiff();
 
+      /*
+       * Mobile external browsers can complete LIFF login yet still lack the
+       * SSO session required by shareTargetPicker. Open the official LIFF URL
+       * instead, carrying a short-lived copy of the reading in the fragment.
+       * LINE then runs the picker inside the supported LIFF browser.
+       */
+      if (isMobileExternalBrowser()) {
+        openMobileLiffResume(rawPayload);
+        return;
+      }
+
       if (!window.liff.isLoggedIn()) {
         savePending(rawPayload);
-        window.liff.login({ redirectUri: window.location.href });
+        window.liff.login({ redirectUri: buildLoginRedirectUrl() });
         return;
       }
 
@@ -523,6 +705,26 @@ ${input.cardLines}`;
           diagnostic: getTargetPickerDiagnostic(),
         });
         openPermissionModal(rawPayload);
+      } else if (isSubwindowError(error)) {
+        /*
+         * LINE closes its own target-picker subwindow after a prolonged idle
+         * period (commonly around ten minutes) and reports
+         * EXCEPTION_IN_SUBWINDOW. Keep the reading intact and offer an
+         * explicit, user-initiated retry so mobile browsers are allowed to
+         * open the picker again.
+         */
+        console.info("[Eri Arcana LINE share: picker closed]", error);
+        savePending(rawPayload);
+        const useLiff = isMobileExternalBrowser();
+        showToast(useLiff ? "請改用 LINE 開啟分享" : "LINE 選擇視窗已結束", {
+          actionLabel: useLiff ? "用 LINE 開啟" : "重新分享",
+          duration: 9000,
+          onAction: () => {
+            const pending = readPending() || rawPayload;
+            if (useLiff) openMobileLiffResume(pending);
+            else void sharePayload(pending);
+          },
+        });
       } else {
         console.error("[Eri Arcana LINE share]", error);
         showToast(friendlyShareError(error));
@@ -709,6 +911,21 @@ ${input.cardLines}`;
     ensurePendingButton();
   };
 
+  const resumeShareAfterReturn = async () => {
+    if (!resumeRequested || resumeAttempted) return;
+    resumeAttempted = true;
+    const pending = readPending();
+    if (!pending?.cards?.length) {
+      cleanResumeUrl();
+      showToast("找不到剛才的抽牌結果，請回結果頁再試一次");
+      return;
+    }
+
+    showToast("正在接續 LINE 分享…", { duration: 5000 });
+    await new Promise((resolve) => window.setTimeout(resolve, 80));
+    void sharePayload(pending);
+  };
+
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && modal?.classList.contains("is-open")) {
       closeSetupModal();
@@ -728,8 +945,16 @@ ${input.cardLines}`;
   });
 
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", refresh, { once: true });
+    document.addEventListener(
+      "DOMContentLoaded",
+      () => {
+        refresh();
+        void resumeShareAfterReturn();
+      },
+      { once: true },
+    );
   } else {
     refresh();
+    void resumeShareAfterReturn();
   }
 })();
