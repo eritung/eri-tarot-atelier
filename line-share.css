@@ -1,0 +1,197 @@
+.line-share-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  min-height: 42px;
+  padding: 0.68rem 0.95rem;
+  border: 1px solid rgba(6, 199, 85, 0.5);
+  border-radius: 999px;
+  color: #f4fff7;
+  background: linear-gradient(135deg, #06c755, #05a949);
+  box-shadow: 0 10px 30px rgba(6, 199, 85, 0.16);
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease,
+    filter 180ms ease;
+}
+
+.line-share-button:hover {
+  box-shadow: 0 13px 34px rgba(6, 199, 85, 0.25);
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
+.line-share-button:focus-visible,
+.line-setup-modal button:focus-visible {
+  outline: 2px solid #b9f7ce;
+  outline-offset: 3px;
+}
+
+.line-share-button:disabled {
+  cursor: wait;
+  filter: saturate(0.7);
+  opacity: 0.72;
+  transform: none;
+}
+
+.line-share-button.is-pending {
+  min-height: 38px;
+  padding: 0.58rem 0.8rem;
+  font-size: 0.72rem;
+}
+
+.line-share-icon {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 1.35rem;
+  border-radius: 0.42rem;
+  color: #06ad4c;
+  background: #fff;
+  font-family: Arial, sans-serif;
+  font-size: 0.55rem;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+}
+
+.line-share-toast {
+  position: fixed;
+  z-index: 10020;
+  left: 50%;
+  bottom: 1.5rem;
+  max-width: calc(100vw - 2rem);
+  padding: 0.72rem 1rem;
+  border: 1px solid rgba(230, 239, 220, 0.2);
+  border-radius: 999px;
+  color: #f1f5e9;
+  background: rgba(8, 37, 44, 0.94);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  font-size: 0.78rem;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 10px);
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.line-share-toast.is-visible {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.line-setup-layer {
+  position: fixed;
+  z-index: 10010;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1.25rem;
+  color: #edf5ea;
+  background: rgba(2, 12, 17, 0.76);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 200ms ease,
+    visibility 200ms ease;
+}
+
+.line-setup-layer.is-open {
+  opacity: 1;
+  visibility: visible;
+}
+
+.line-setup-modal {
+  position: relative;
+  width: min(100%, 520px);
+  padding: 1.55rem;
+  border: 1px solid rgba(219, 236, 219, 0.17);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 85% 0%, rgba(6, 199, 85, 0.15), transparent 34%),
+    linear-gradient(165deg, #0b2b34, #071c23);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.4);
+}
+
+.line-setup-eyebrow {
+  margin: 0 0 0.35rem;
+  color: #73dc9c;
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
+}
+
+.line-setup-modal h2 {
+  margin: 0 2rem 0.85rem 0;
+  color: #f3f6eb;
+  font-size: clamp(1.35rem, 4vw, 1.8rem);
+}
+
+.line-setup-modal p,
+.line-setup-modal li {
+  color: rgba(232, 241, 228, 0.76);
+  font-size: 0.86rem;
+  line-height: 1.7;
+}
+
+.line-setup-modal ol {
+  margin: 1rem 0;
+  padding-left: 1.3rem;
+}
+
+.line-setup-modal code {
+  padding: 0.15rem 0.38rem;
+  border-radius: 6px;
+  color: #d7ffe4;
+  background: rgba(6, 199, 85, 0.12);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+}
+
+.line-setup-modal .line-setup-note {
+  margin-bottom: 0;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(219, 236, 219, 0.12);
+  color: rgba(232, 241, 228, 0.55);
+  font-size: 0.76rem;
+}
+
+.line-setup-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(219, 236, 219, 0.18);
+  border-radius: 50%;
+  color: #f2f6ed;
+  background: rgba(255, 255, 255, 0.04);
+  font: inherit;
+  font-size: 1.35rem;
+  cursor: pointer;
+}
+
+@media (max-width: 680px) {
+  .prompt-actions .line-share-button {
+    width: 100%;
+  }
+
+  .topbar .line-share-button.is-pending {
+    width: auto;
+  }
+
+  .topbar .line-share-button.is-pending .line-share-label {
+    display: none;
+  }
+
+  .line-setup-modal {
+    padding: 1.25rem;
+  }
+}

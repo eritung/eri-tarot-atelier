@@ -1,0 +1,71 @@
+Eri Arcana × LINE 分享設定
+==========================
+
+這個版本已內建：
+・抽牌完成頁的「分享至 LINE」按鈕
+・LINE 好友／群組聊天室選擇器
+・抽牌卡片 Flex Message 輪播
+・牌位、牌名、正逆位資訊
+・第二則完整 AI 解牌指令
+・點擊卡片返回占卜網站首頁
+・外部瀏覽器登入後的「繼續分享」機制
+
+一、建立 LINE Login 與 LIFF
+--------------------------
+1. 前往 https://developers.line.biz/console/
+2. 建立 Provider。
+3. 建立「LINE Login」channel。
+4. 將 channel 狀態發布為 Published；開發狀態通常只有管理員與測試人員可使用。
+5. 在 channel 的 LIFF 分頁新增 LIFF app：
+   ・Endpoint URL：部署後的 HTTPS 網站首頁
+   ・Size：Full
+   ・Scope：只勾 openid 即可，不需要 profile 或 email
+6. 在 LINE Developers Console 啟用 Share Target Picker，並同意 Agreement Regarding Use of Information。
+7. 複製 LIFF ID。
+
+二、填入網站設定
+----------------
+開啟 line-share.config.js，把：
+
+LIFF_ID: "請在這裡貼上你的_LIFF_ID"
+
+改成：
+
+LIFF_ID: "你的實際_LIFF_ID"
+
+HOME_URL 可以留白，分享卡片就會連到 https://liff.line.me/{LIFF_ID}。
+若要固定連到其他首頁，請填入完整 HTTPS 網址。
+
+LIFF ID 是公開識別碼，可以放在前端。
+請勿把 Channel Secret 或 Channel Access Token 放進 HTML／JavaScript。
+
+三、部署
+--------
+請將整個 eri-tarot-atelier-main 資料夾內容一起部署，尤其不要漏掉：
+・index.html
+・line-share.config.js
+・line-share.js
+・line-share.css
+・share-cards/ 資料夾
+・local-memory.js
+・local-memory.css
+
+四、使用方式
+------------
+建議讓使用者從 LIFF URL 開啟網站：
+https://liff.line.me/{LIFF_ID}
+
+在 LINE 裡開啟時通常會沿用目前的 LINE 登入狀態。
+若從 Safari／Chrome 開啟，第一次分享可能需要登入與同意授權；登入完成後，首頁會出現「繼續分享剛才結果」按鈕。
+
+注意：
+・可選擇好友或群組，但 LINE OpenChat 不在選擇器內。
+・網站不會取得分享對象的名稱，也不會知道實際分享給幾人。
+・使用者取消選擇時不會送出訊息。
+・網站必須以 HTTPS 部署，直接雙擊本機 HTML 無法使用正式 LINE 分享。
+
+五、費用
+--------
+LINE Login 與本功能使用的 LIFF Share Target Picker 本身不收費。
+訊息以使用者身分分享，不是官方帳號主動推播，因此不計入 Messaging API 付費訊息額度。
+可能的支出只有自訂網域、網站主機，或未來若改成伺服器即時產圖時的圖片儲存／運算費。
