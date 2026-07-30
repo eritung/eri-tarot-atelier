@@ -7,7 +7,7 @@
   const RESUME_HASH_PREFIX = "#eri-line-share=";
   const PENDING_TTL = 30 * 60 * 1000;
   const SETTINGS_KEY = "eriArcana.localMemory.settings.v1";
-  const PLACEHOLDER_ID = "請在這裡貼上你的_LIFF_ID";
+  const PLACEHOLDER_ID = "2010900471-Lp7tUAMy";
 
   const MAJOR_NAMES = [
     "愚者",
