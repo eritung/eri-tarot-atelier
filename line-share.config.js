@@ -8,7 +8,6 @@
 window.ERI_LINE_CONFIG = {
   ...(window.ERI_LINE_CONFIG || {}),
   LIFF_ID:
-    window.ERI_LINE_CONFIG?.LIFF_ID ||
-    "2010900471-Lp7tUAMy",
+    window.ERI_LINE_CONFIG?.LIFF_ID || "2010900471-Lp7tUAMy",
   HOME_URL: window.ERI_LINE_CONFIG?.HOME_URL || "",
 };
