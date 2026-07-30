@@ -4,6 +4,7 @@
   const PENDING_KEY = "eriArcana.lineShare.pending.v2";
   const LEGACY_PENDING_KEY = "eriArcana.lineShare.pending.v1";
   const RESUME_QUERY_KEY = "lineShareResume";
+  const RESUME_DATA_KEY = "lineShareData";
   const RESUME_HASH_PREFIX = "#eri-line-share=";
   const PENDING_TTL = 30 * 60 * 1000;
   const SETTINGS_KEY = "eriArcana.localMemory.settings.v1";
@@ -68,9 +69,6 @@
   let failedSharePayload;
   let toastTimer;
   let resumeAttempted = false;
-  let resumeRequested =
-    new URLSearchParams(window.location.search).get(RESUME_QUERY_KEY) === "1" ||
-    window.location.hash.startsWith(RESUME_HASH_PREFIX);
 
   const config = () => window.ERI_LINE_CONFIG || {};
 
@@ -127,12 +125,50 @@
     savedAt: Date.now(),
   });
 
-  const readResumeHash = () => {
-    if (!window.location.hash.startsWith(RESUME_HASH_PREFIX)) return null;
+  const getResumeLocation = () => {
+    const current = new URL(window.location.href);
+    if (
+      current.searchParams.get(RESUME_QUERY_KEY) === "1" ||
+      current.searchParams.has(RESUME_DATA_KEY) ||
+      current.hash.startsWith(RESUME_HASH_PREFIX)
+    ) {
+      return current;
+    }
+
+    /*
+     * On the primary LIFF redirect, the extra part of the LIFF URL is carried
+     * inside `liff.state`. The SDK turns it into the secondary endpoint URL
+     * during liff.init(). Reading it here lets us recognize the resume request
+     * without changing the URL before initialization has completed.
+     */
+    const liffState = current.searchParams.get("liff.state");
+    if (!liffState) return null;
+
     try {
-      return decodeBase64Url(
-        window.location.hash.slice(RESUME_HASH_PREFIX.length),
-      );
+      const statePath = /^[/?#]/.test(liffState) ? liffState : `/${liffState}`;
+      return new URL(statePath, current.origin);
+    } catch (error) {
+      console.warn("[Eri Arcana LINE share: invalid liff.state]", error);
+      return null;
+    }
+  };
+
+  const isResumeRequested = () =>
+    getResumeLocation()?.searchParams.get(RESUME_QUERY_KEY) === "1";
+
+  const readResumePayload = () => {
+    const location = getResumeLocation();
+    if (!location) return null;
+
+    const encoded =
+      location.searchParams.get(RESUME_DATA_KEY) ||
+      (location.hash.startsWith(RESUME_HASH_PREFIX)
+        ? location.hash.slice(RESUME_HASH_PREFIX.length)
+        : "");
+    if (!encoded) return null;
+
+    try {
+      return decodeBase64Url(encoded);
     } catch (error) {
       console.warn("[Eri Arcana LINE share: invalid resume payload]", error);
       return null;
@@ -143,6 +179,8 @@
     try {
       const url = new URL(window.location.href);
       url.searchParams.delete(RESUME_QUERY_KEY);
+      url.searchParams.delete(RESUME_DATA_KEY);
+      url.searchParams.delete("liff.state");
       if (url.hash.startsWith(RESUME_HASH_PREFIX)) url.hash = "";
       window.history.replaceState(null, "", url.href);
     } catch {
@@ -489,11 +527,10 @@ ${input.cardLines}`;
   };
 
   const readPending = () => {
-    const fromHash = readResumeHash();
-    if (fromHash?.cards?.length) {
-      const hydrated = hydratePayload(fromHash);
+    const fromUrl = readResumePayload();
+    if (fromUrl?.cards?.length) {
+      const hydrated = hydratePayload(fromUrl);
       savePending(hydrated);
-      cleanResumeUrl();
       return hydrated;
     }
 
@@ -538,7 +575,11 @@ ${input.cardLines}`;
   const buildLiffResumeUrl = (payload) => {
     const id = encodeURIComponent(String(config().LIFF_ID).trim());
     const data = encodeBase64Url(compactPayload(payload));
-    return `https://liff.line.me/${id}?${RESUME_QUERY_KEY}=1${RESUME_HASH_PREFIX}${data}`;
+    const query = new URLSearchParams({
+      [RESUME_QUERY_KEY]: "1",
+      [RESUME_DATA_KEY]: data,
+    });
+    return `https://liff.line.me/${id}/?${query.toString()}`;
   };
 
   const buildLoginRedirectUrl = () => {
@@ -912,11 +953,26 @@ ${input.cardLines}`;
   };
 
   const resumeShareAfterReturn = async () => {
-    if (!resumeRequested || resumeAttempted) return;
+    if (resumeAttempted || !isResumeRequested()) return;
     resumeAttempted = true;
+
+    /*
+     * LINE needs liff.state and its temporary authorization parameters until
+     * liff.init() has finished the primary and secondary redirects. Cleaning
+     * the URL before this point can strand the user on the endpoint homepage.
+     */
+    try {
+      await initializeLiff();
+    } catch (error) {
+      resumeAttempted = false;
+      console.error("[Eri Arcana LINE share: resume init]", error);
+      showToast(friendlyShareError(error));
+      return;
+    }
+
     const pending = readPending();
+    cleanResumeUrl();
     if (!pending?.cards?.length) {
-      cleanResumeUrl();
       showToast("找不到剛才的抽牌結果，請回結果頁再試一次");
       return;
     }
