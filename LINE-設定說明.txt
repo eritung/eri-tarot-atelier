@@ -64,6 +64,8 @@ https://liff.line.me/{LIFF_ID}
 ・網站不會取得分享對象的名稱，也不會知道實際分享給幾人。
 ・使用者取消選擇時不會送出訊息。
 ・若剛啟用 shareTargetPicker，請重新整理網站；必要時登出 LINE 網頁版後重新登入，讓設定與登入狀態更新。
+・若出現 403 權限檢查畫面，先比對畫面顯示的 LIFF ID 是否屬於剛啟用 shareTargetPicker 的同一個 LINE Login channel。
+・電腦外部瀏覽器需要有效的 LINE SSO 登入；若 LIFF ID 相同，請按畫面上的「重新登入 LINE」，並在登入頁使用 LINE 綁定的 Email 與密碼。
 ・網站必須以 HTTPS 部署，直接雙擊本機 HTML 無法使用正式 LINE 分享。
 
 五、費用

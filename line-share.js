@@ -60,6 +60,8 @@
   let initPromise;
   let shareBusy = false;
   let modal;
+  let permissionModal;
+  let failedSharePayload;
   let toastTimer;
 
   const config = () => window.ERI_LINE_CONFIG || {};
@@ -378,14 +380,46 @@ ${cardLines}
     return !window.liff.isInClient();
   };
 
+  const errorCode = (error) =>
+    String(error?.code || error?.status || "").trim().toUpperCase();
+
+  const isForbiddenError = (error) => {
+    const code = errorCode(error);
+    return code === "FORBIDDEN" || code === "403";
+  };
+
+  const getTargetPickerDiagnostic = () => {
+    let context = null;
+    try {
+      context = window.liff?.getContext?.() || null;
+    } catch {
+      // Diagnostic data is optional and must never block the share flow.
+    }
+
+    let apiAvailable = null;
+    try {
+      apiAvailable = Boolean(
+        window.liff?.isApiAvailable?.("shareTargetPicker"),
+      );
+    } catch {
+      // Keep null when the SDK cannot report availability.
+    }
+
+    return {
+      liffId: String(config().LIFF_ID || "").trim(),
+      loggedIn: Boolean(window.liff?.isLoggedIn?.()),
+      inClient: Boolean(window.liff?.isInClient?.()),
+      apiAvailable,
+      channelPermission:
+        context?.availability?.shareTargetPicker?.permission ?? null,
+    };
+  };
+
   const friendlyShareError = (error) => {
-    const code = String(error?.code || "");
+    const code = errorCode(error);
 
     if (code === "UNAUTHORIZED" || code === "401") {
       return "LINE 登入狀態已失效，請重新登入後再試一次。";
-    }
-    if (code === "FORBIDDEN" || code === "403") {
-      return "聊天室選擇器尚未對此 LIFF 頻道生效，請確認已啟用 shareTargetPicker 後重新整理。";
     }
     if (code === "EXCEPTION_IN_SUBWINDOW") {
       return "LINE 選擇視窗已逾時，請關閉後再按一次分享。";
@@ -445,6 +479,12 @@ ${cardLines}
     } catch (error) {
       if (error?.code === "LIFF_ID_MISSING") {
         openSetupModal();
+      } else if (isForbiddenError(error)) {
+        console.error("[Eri Arcana LINE share: permission]", {
+          error,
+          diagnostic: getTargetPickerDiagnostic(),
+        });
+        openPermissionModal(rawPayload);
       } else {
         console.error("[Eri Arcana LINE share]", error);
         showToast(friendlyShareError(error));
@@ -533,6 +573,99 @@ ${cardLines}
     document.documentElement.style.overflow = "";
   };
 
+  const closePermissionModal = () => {
+    if (!permissionModal) return;
+    permissionModal.classList.remove("is-open");
+    permissionModal.setAttribute("aria-hidden", "true");
+    document.documentElement.style.overflow = "";
+  };
+
+  const reauthenticateLine = () => {
+    if (failedSharePayload) savePending(failedSharePayload);
+    closePermissionModal();
+
+    if (!window.liff || window.liff.isInClient()) {
+      window.location.assign(getHomeUrl());
+      return;
+    }
+
+    try {
+      if (window.liff.isLoggedIn()) window.liff.logout();
+      window.liff.login({ redirectUri: window.location.href });
+    } catch (error) {
+      console.error("[Eri Arcana LINE re-login]", error);
+      showToast("無法重新登入，請關閉頁面後再試一次");
+    }
+  };
+
+  const ensurePermissionModal = () => {
+    if (permissionModal) return;
+    permissionModal = document.createElement("div");
+    permissionModal.className = "line-setup-layer";
+    permissionModal.setAttribute("aria-hidden", "true");
+    permissionModal.innerHTML = `
+      <section class="line-setup-modal line-permission-modal" role="dialog" aria-modal="true" aria-labelledby="line-permission-title">
+        <button type="button" class="line-setup-close" aria-label="關閉">×</button>
+        <p class="line-setup-eyebrow">LINE SHARE · 權限檢查</p>
+        <h2 id="line-permission-title">LINE 拒絕了這組 LIFF ID</h2>
+        <p>網站已成功呼叫聊天室選擇器，但 LINE 回傳 <code>403 Forbidden</code>。這不是裝置不支援，而是頻道權限或電腦登入狀態尚未通過。</p>
+        <div class="line-diagnostic-card">
+          <span>網站目前使用的 LIFF ID</span>
+          <code class="line-current-liff-id"></code>
+          <small class="line-permission-state"></small>
+        </div>
+        <ol>
+          <li>確認上方 LIFF ID，和你在 LINE Developers 啟用 <strong>shareTargetPicker</strong> 的 LIFF app 完全相同。</li>
+          <li>若相同，請按「重新登入 LINE」；電腦版需要有效的 SSO 登入，登入頁出現時請使用 LINE 綁定的 Email 與密碼。</li>
+        </ol>
+        <div class="line-permission-actions">
+          <button type="button" class="line-reauth-button">重新登入 LINE</button>
+          <a class="line-liff-open-link" href="#">用 LIFF 網址重開</a>
+        </div>
+        <p class="line-setup-note">重新登入後，這次抽牌結果仍會保留，可按「繼續分享剛才結果」。</p>
+      </section>
+    `;
+    document.body.appendChild(permissionModal);
+    permissionModal.addEventListener("click", (event) => {
+      if (
+        event.target === permissionModal ||
+        event.target.closest(".line-setup-close")
+      ) {
+        closePermissionModal();
+        return;
+      }
+      if (event.target.closest(".line-reauth-button")) {
+        reauthenticateLine();
+      }
+    });
+  };
+
+  const openPermissionModal = (payload) => {
+    failedSharePayload = payload;
+    if (payload) savePending(payload);
+    ensurePermissionModal();
+
+    const diagnostic = getTargetPickerDiagnostic();
+    const id = diagnostic.liffId || "未讀取到 LIFF ID";
+    const permissionText =
+      diagnostic.channelPermission === false
+        ? "LINE 回報：此頻道的分享權限未開啟"
+        : diagnostic.apiAvailable === false
+          ? "LINE 回報：目前登入狀態尚未取得分享權限"
+          : "LINE 回報：已登入，但伺服器拒絕分享權限";
+
+    permissionModal.querySelector(".line-current-liff-id").textContent = id;
+    permissionModal.querySelector(".line-permission-state").textContent =
+      permissionText;
+    const liffLink = permissionModal.querySelector(".line-liff-open-link");
+    liffLink.href = `https://liff.line.me/${encodeURIComponent(id)}`;
+
+    permissionModal.classList.add("is-open");
+    permissionModal.setAttribute("aria-hidden", "false");
+    document.documentElement.style.overflow = "hidden";
+    permissionModal.querySelector(".line-reauth-button")?.focus();
+  };
+
   const refresh = () => {
     ensureResultButton();
     ensurePendingButton();
@@ -541,6 +674,12 @@ ${cardLines}
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && modal?.classList.contains("is-open")) {
       closeSetupModal();
+    }
+    if (
+      event.key === "Escape" &&
+      permissionModal?.classList.contains("is-open")
+    ) {
+      closePermissionModal();
     }
   });
 
