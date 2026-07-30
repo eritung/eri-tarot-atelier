@@ -25,13 +25,11 @@ Eri Arcana × LINE 分享設定
 
 二、填入網站設定
 ----------------
-開啟 line-share.config.js，把：
+line-share.config.js 已填入目前使用的 LIFF ID：
 
-LIFF_ID: "請在這裡貼上你的_LIFF_ID"
+LIFF_ID: "2010900471-Lp7tUAMy"
 
-改成：
-
-LIFF_ID: "你的實際_LIFF_ID"
+若之後更換 LIFF app，再將這一行改成新的 LIFF ID。
 
 HOME_URL 可以留白，分享卡片就會連到 https://liff.line.me/{LIFF_ID}。
 若要固定連到其他首頁，請填入完整 HTTPS 網址。
@@ -43,6 +41,7 @@ LIFF ID 是公開識別碼，可以放在前端。
 --------
 請將整個 eri-tarot-atelier-main 資料夾內容一起部署，尤其不要漏掉：
 ・index.html
+・reading-prompt.config.js
 ・line-share.config.js
 ・line-share.js
 ・line-share.css
@@ -50,7 +49,18 @@ LIFF ID 是公開識別碼，可以放在前端。
 ・local-memory.js
 ・local-memory.css
 
-四、使用方式
+四、修改解牌指令
+----------------
+開啟 reading-prompt.config.js，只需修改 TEMPLATE 反引號內的文字。
+「複製解牌指令」與「分享至 LINE」會同步套用，不必分別修改。
+
+可保留以下自動欄位，系統會在抽牌後代入實際內容：
+・{{question}}：占卜問題
+・{{date}}：占卜日期
+・{{spread}}：牌陣名稱
+・{{cards}}：牌位、牌名與正逆位
+
+五、使用方式
 ------------
 建議讓使用者從 LIFF URL 開啟網站：
 https://liff.line.me/{LIFF_ID}
@@ -68,7 +78,7 @@ https://liff.line.me/{LIFF_ID}
 ・電腦外部瀏覽器需要有效的 LINE SSO 登入；若 LIFF ID 相同，請按畫面上的「重新登入 LINE」，並在登入頁使用 LINE 綁定的 Email 與密碼。
 ・網站必須以 HTTPS 部署，直接雙擊本機 HTML 無法使用正式 LINE 分享。
 
-五、費用
+六、費用
 --------
 LINE Login 與本功能使用的 LIFF Share Target Picker 本身不收費。
 訊息以使用者身分分享，不是官方帳號主動推播，因此不計入 Messaging API 付費訊息額度。

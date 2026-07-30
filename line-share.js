@@ -194,22 +194,19 @@
       )
       .join("\n");
 
-    return `請以專業塔羅牌解讀者的角度，根據以下抽牌結果為我解讀。
+    const input = { question, date, spread, cardLines };
+    const configuredBuilder = window.ERI_READING_PROMPT?.buildPrompt;
 
-【問題】${question}
-【占卜日期】${date}
-【牌陣】${spread}
+    if (typeof configuredBuilder === "function") {
+      return configuredBuilder(input);
+    }
+
+    return `【問題】${input.question}
+【占卜日期】${input.date}
+【牌陣】${input.spread}
 
 【抽牌結果】
-${cardLines}
-
-請先整體觀察牌面之間的元素、數字、方向與能量如何互相影響，再依照牌位串成完整訊息，不要只逐張列出單獨牌義。請包含：
-1. 整體主題與目前狀態
-2. 各牌位之間的關聯與故事線
-3. 可能的盲點或需要留意之處
-4. 可以實際採取的行動建議
-
-請使用繁體中文，語氣直接但溫和；若牌面只代表可能性，請清楚使用「可能、暗示、顯示」等措辭，避免將結果說成絕對命定。`;
+${input.cardLines}`;
   };
 
   const isReachableImage = (url) =>
