@@ -44,11 +44,11 @@
     "侍者",
     "騎士",
     "皇后",
+    "國王",
   ];
   const CARD_NAMES = [
     ...MAJOR_NAMES,
     ...SUITS.flatMap((suit) => RANKS.map((rank) => `${suit}${rank}`)),
-    "錢幣國王",
   ];
   const CARD_NUMBER = new Map(
     CARD_NAMES.map((name, index) => [
@@ -112,9 +112,15 @@
       .replace(/^\d+\s*·\s*/, "")
       .trim();
 
-  const fallbackImageUrl = (cardName, orientation = "正位") => {
+  const fallbackImageUrl = (
+    cardName,
+    orientation = "正位",
+    imageDeck = "aurora",
+  ) => {
     const number = CARD_NUMBER.get(cardName) || "01";
-    const folder = orientation === "逆位" ? "aurora-reversed" : "aurora";
+    const baseFolder = imageDeck === "cat" ? "cat" : "aurora";
+    const folder =
+      orientation === "逆位" ? `${baseFolder}-reversed` : baseFolder;
     return new URL(
       `./share-cards/${folder}/${number}.jpg`,
       document.baseURI,
@@ -122,23 +128,36 @@
   };
 
   const extractCardImageUrl = (item, cardName, orientation) => {
+    const art = item.querySelector(".card-face-art");
+    const inline = art?.style?.backgroundImage || "";
+    const imageDeck = /(?:^|\/)decks\/cat\//i.test(inline)
+      ? "cat"
+      : "aurora";
+
     // LINE Flex images cannot be rotated with CSS. Reversed cards therefore
     // use a bundled, pre-rotated share image.
     if (orientation === "逆位") {
-      return fallbackImageUrl(cardName, orientation);
+      return {
+        imageDeck,
+        imageUrl: fallbackImageUrl(cardName, orientation, imageDeck),
+      };
     }
 
-    const art = item.querySelector(".card-face-art");
-    const inline = art?.style?.backgroundImage || "";
     const match = inline.match(/url\((['"]?)(.*?)\1\)/i);
     if (match?.[2] && !/^(data|blob):/i.test(match[2])) {
       try {
-        return new URL(match[2], document.baseURI).href;
+        return {
+          imageDeck,
+          imageUrl: new URL(match[2], document.baseURI).href,
+        };
       } catch {
         // Fall through to the bundled share artwork.
       }
     }
-    return fallbackImageUrl(cardName);
+    return {
+      imageDeck,
+      imageUrl: fallbackImageUrl(cardName, orientation, imageDeck),
+    };
   };
 
   const collectResult = () => {
@@ -155,6 +174,11 @@
         const english = detail
           .replace(/\s*·\s*(正位|逆位)\s*$/, "")
           .trim();
+        const artwork = extractCardImageUrl(
+          item,
+          name,
+          orientation,
+        );
         return {
           name,
           english,
@@ -162,7 +186,8 @@
           position: normalizePosition(
             item.querySelector(".result-position")?.textContent,
           ),
-          imageUrl: extractCardImageUrl(item, name, orientation),
+          imageDeck: artwork.imageDeck,
+          imageUrl: artwork.imageUrl,
         };
       })
       .filter((card) => card.name);
@@ -234,7 +259,11 @@ ${input.cardLines}`;
   const resolveCardImages = async (payload) => {
     const cards = await Promise.all(
       payload.cards.map(async (card) => {
-        const fallback = fallbackImageUrl(card.name, card.orientation);
+        const fallback = fallbackImageUrl(
+          card.name,
+          card.orientation,
+          card.imageDeck,
+        );
         if (card.imageUrl === fallback) return card;
         const works = await isReachableImage(card.imageUrl);
         return { ...card, imageUrl: works ? card.imageUrl : fallback };
