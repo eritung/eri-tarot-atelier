@@ -79,6 +79,53 @@
     }
   };
 
+  /*
+   * LINE 登入完成後會把授權參數帶回網址。這些參數只能被消費一次，
+   * 若留在網址上，之後再次登入或重新整理都會失敗。
+   */
+  const LOGIN_PARAMS = [
+    "code",
+    "state",
+    "liffClientId",
+    "liffRedirectUri",
+    "liffReferrer",
+    "liff.state",
+    "error",
+    "errorCode",
+    "error_description",
+  ];
+
+  const loginRedirectUrl = () => {
+    try {
+      const url = new URL(window.location.href);
+      LOGIN_PARAMS.forEach((key) => url.searchParams.delete(key));
+      url.hash = "";
+      return url.toString();
+    } catch {
+      return window.location.href;
+    }
+  };
+
+  const hasLoginParams = () => {
+    try {
+      const params = new URL(window.location.href).searchParams;
+      return LOGIN_PARAMS.some((key) => params.has(key));
+    } catch {
+      return false;
+    }
+  };
+
+  const stripLoginParams = () => {
+    try {
+      const clean = loginRedirectUrl();
+      if (clean !== window.location.href) {
+        window.history.replaceState(null, "", clean);
+      }
+    } catch {
+      // 網址整理失敗不影響分享流程。
+    }
+  };
+
   const showToast = (message) => {
     let toast = document.querySelector(".line-share-toast");
     if (!toast) {
@@ -255,7 +302,11 @@ ${input.cardLines}`;
         window.clearTimeout(timer);
         resolve(value);
       };
-      const timer = window.setTimeout(() => done(false), 3500);
+      /*
+       * 手機瀏覽器只在使用者點擊後的短暫時間內允許開啟聊天室選擇視窗，
+       * 圖片檢查太久會讓分享視窗被瀏覽器攔截，因此縮短等待時間。
+       */
+      const timer = window.setTimeout(() => done(false), 1200);
       image.onload = () => done(true);
       image.onerror = () => done(false);
       image.src = url;
@@ -355,31 +406,62 @@ ${input.cardLines}`;
     };
   };
 
-  const savePending = (payload) => {
+  /*
+   * 手機上的 LINE 登入常會跳出瀏覽器（或開新分頁）再導回來，
+   * sessionStorage 只綁定單一分頁，回來後抽牌結果就消失了。
+   * 因此優先寫入 localStorage，sessionStorage 僅作相容備援。
+   */
+  const pendingStores = () => {
+    const stores = [];
     try {
-      window.sessionStorage.setItem(
-        PENDING_KEY,
-        JSON.stringify({ ...payload, savedAt: Date.now() }),
-      );
+      if (window.localStorage) stores.push(window.localStorage);
     } catch {
-      // Session storage is optional; sharing still works in a LIFF browser.
+      // 無痕模式可能完全封鎖 localStorage。
     }
-  };
-
-  const readPending = () => {
-    const pending = parseJson(
-      window.sessionStorage.getItem(PENDING_KEY),
-      null,
-    );
-    if (!pending || Date.now() - Number(pending.savedAt || 0) > 30 * 60 * 1000) {
-      window.sessionStorage.removeItem(PENDING_KEY);
-      return null;
+    try {
+      if (window.sessionStorage) stores.push(window.sessionStorage);
+    } catch {
+      // 兩者都不可用時仍可在 LIFF 瀏覽器內直接分享。
     }
-    return pending;
+    return stores;
   };
 
   const clearPending = () => {
-    window.sessionStorage.removeItem(PENDING_KEY);
+    pendingStores().forEach((store) => {
+      try {
+        store.removeItem(PENDING_KEY);
+      } catch {
+        // 清除失敗不影響分享流程。
+      }
+    });
+  };
+
+  const savePending = (payload) => {
+    const record = JSON.stringify({ ...payload, savedAt: Date.now() });
+    pendingStores().forEach((store) => {
+      try {
+        store.setItem(PENDING_KEY, record);
+      } catch {
+        // Storage is optional; sharing still works in a LIFF browser.
+      }
+    });
+  };
+
+  const readPending = () => {
+    let pending = null;
+    pendingStores().forEach((store) => {
+      if (pending) return;
+      try {
+        pending = parseJson(store.getItem(PENDING_KEY), null);
+      } catch {
+        pending = null;
+      }
+    });
+    if (!pending || Date.now() - Number(pending.savedAt || 0) > 30 * 60 * 1000) {
+      clearPending();
+      return null;
+    }
+    return pending;
   };
 
   const initializeLiff = async () => {
@@ -488,7 +570,8 @@ ${input.cardLines}`;
 
       if (!window.liff.isLoggedIn()) {
         savePending(rawPayload);
-        window.liff.login({ redirectUri: window.location.href });
+        updateShareButtons(true, "前往 LINE 登入…");
+        window.liff.login({ redirectUri: loginRedirectUrl() });
         return;
       }
 
@@ -629,7 +712,7 @@ ${input.cardLines}`;
 
     try {
       if (window.liff.isLoggedIn()) window.liff.logout();
-      window.liff.login({ redirectUri: window.location.href });
+      window.liff.login({ redirectUri: loginRedirectUrl() });
     } catch (error) {
       console.error("[Eri Arcana LINE re-login]", error);
       showToast("無法重新登入，請關閉頁面後再試一次");
@@ -727,9 +810,30 @@ ${input.cardLines}`;
     subtree: true,
   });
 
+  /*
+   * 從 LINE 登入頁導回來時，授權碼要靠 liff.init() 兌換成登入狀態。
+   * 以前只在按下分享按鈕時才初始化，手機導回後等於沒登入，
+   * 畫面也不會出現「繼續分享剛才結果」。改成載入網頁就先初始化。
+   */
+  const bootstrapLiff = () => {
+    if (!hasLiffId() || !window.liff) return;
+    initializeLiff()
+      .then(() => {
+        stripLoginParams();
+        refresh();
+      })
+      .catch((error) => {
+        console.error("[Eri Arcana LINE init]", error);
+        // 用過的授權碼會讓之後每次初始化都失敗，先從網址清掉。
+        if (hasLoginParams()) stripLoginParams();
+      });
+  };
+
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", refresh, { once: true });
   } else {
     refresh();
   }
+
+  bootstrapLiff();
 })();
