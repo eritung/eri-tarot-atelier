@@ -67,9 +67,9 @@ LIFF ID 是公開識別碼，可以放在前端。
 建議讓使用者從 LIFF URL 開啟網站：
 https://liff.line.me/{LIFF_ID}
 
-在 LINE 裡開啟時通常會沿用目前的 LINE 登入狀態，並可分享 Flex Message 卡片。
-從手機 Safari／Chrome 開啟網站時，會改用 LINE 官方原生分享畫面，直接選擇聊天室，不需要先登入 LIFF；分享內容為牌名、正逆位、問題與網站連結。
-電腦外部瀏覽器仍使用 LIFF 登入與聊天室選擇器。
+在 LINE 裡開啟時通常會沿用目前的 LINE 登入狀態。
+從手機 Safari／Chrome 或電腦外部瀏覽器開啟時，會先完成 LIFF 登入，再開啟聊天室選擇器。
+所有支援 shareTargetPicker 的情境都會分䪿 Flex Message 卡片與完整解牌指令。
 
 注意：
 ・可選擇好友或群組，但 LINE OpenChat 不在選擇器內。
