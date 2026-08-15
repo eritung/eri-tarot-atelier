@@ -31,8 +31,10 @@ LIFF_ID: "2010900471-Lp7tUAMy"
 
 若之後更換 LIFF app，再將這一行改成新的 LIFF ID。
 
-HOME_URL 可以留白，分享卡片就會連到 https://liff.line.me/{LIFF_ID}。
-若要固定連到其他首頁，請填入完整 HTTPS 網址。
+HOME_URL 已固定為正式網站：
+https://eritung.github.io/eri-tarot-atelier/
+
+分享出去後會直接回到網站，不會再次觸發 LINE 登入。
 
 LIFF ID 是公開識別碼，可以放在前端。
 請勿把 Channel Secret 或 Channel Access Token 放進 HTML／JavaScript。
@@ -65,9 +67,9 @@ LIFF ID 是公開識別碼，可以放在前端。
 建議讓使用者從 LIFF URL 開啟網站：
 https://liff.line.me/{LIFF_ID}
 
-在 LINE 裡開啟時通常會沿用目前的 LINE 登入狀態。
-也可以直接從電腦或手機的 Safari／Chrome 開啟網站。第一次分享可能需要登入與同意授權；登入完成後，首頁會出現「繼續分享剛才結果」按鈕。
-外部瀏覽器會由 LINE 開啟聊天室選擇視窗，不需要先把網站改用 LINE App 開啟。
+在 LINE 裡開啟時通常會沿用目前的 LINE 登入狀態，並可分享 Flex Message 卡片。
+從手機 Safari／Chrome 開啟網站時，會改用 LINE 官方原生分享畫面，直接選擇聊天室，不需要先登入 LIFF；分享內容為牌名、正逆位、問題與網站連結。
+電腦外部瀏覽器仍使用 LIFF 登入與聊天室選擇器。
 
 注意：
 ・可選擇好友或群組，但 LINE OpenChat 不在選擇器內。

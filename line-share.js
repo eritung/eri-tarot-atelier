@@ -153,6 +153,51 @@
     return new URL("./", window.location.href).href;
   };
 
+  /*
+   * 手機外部瀏覽器的 shareTargetPicker 需要額外的 LINE SSO 工作階段，
+   * 自動登入不一定會建立它，常會在登入後落到 LINE 的錯誤頁。
+   * 這種情境改走 LINE 官方 URL scheme：直接開啟原生聊天室選擇畫面，
+   * 不要求使用者再次登入。LIFF 瀏覽器內仍保留 Flex Message 分享。
+   */
+  const isMobileExternalBrowser = () => {
+    let os = "";
+    let inClient = false;
+    try {
+      os = window.liff?.getOS?.() || "";
+      inClient = Boolean(window.liff?.isInClient?.());
+    } catch {
+      // LIFF SDK 尚未完成載入時，改用瀏覽器資訊判斷。
+    }
+    const isMobile =
+      os === "ios" ||
+      os === "android" ||
+      /Android|iPhone|iPad|iPod/i.test(window.navigator.userAgent);
+    return isMobile && !inClient;
+  };
+
+  const buildNativeShareText = (payload) => {
+    const cards = payload.cards
+      .map(
+        (card, index) =>
+          `${index + 1}. ${card.position || `第 ${index + 1} 張`}：${card.name}（${card.orientation}）`,
+      )
+      .join("\n");
+    return [
+      "Eri Arcana 抽牌結果 ✦",
+      payload.question ? `問題：${payload.question}` : "",
+      cards,
+      getHomeUrl(),
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+  };
+
+  const openNativeLineShare = (payload) => {
+    savePending(payload);
+    const text = encodeURIComponent(buildNativeShareText(payload));
+    window.location.assign(`https://line.me/R/share?text=${text}`);
+  };
+
   const normalizePosition = (value) =>
     String(value || "")
       .replace(/\s+/g, " ")
@@ -566,12 +611,20 @@ ${input.cardLines}`;
     updateShareButtons(true, "準備 LINE 卡片…");
 
     try {
+      if (isMobileExternalBrowser()) {
+        updateShareButtons(true, "正在開啟 LINE…");
+        openNativeLineShare(rawPayload);
+        return;
+      }
+
       await initializeLiff();
 
       if (!window.liff.isLoggedIn()) {
         savePending(rawPayload);
         updateShareButtons(true, "前往 LINE 登入…");
-        window.liff.login({ redirectUri: loginRedirectUrl() });
+        // 讓 LINE 使用 Console 設定的 Endpoint URL，避免自訂回跳網址
+        // 不在 Endpoint 路徑下時顯示「找不到頁面」。
+        window.liff.login();
         return;
       }
 
@@ -712,7 +765,7 @@ ${input.cardLines}`;
 
     try {
       if (window.liff.isLoggedIn()) window.liff.logout();
-      window.liff.login({ redirectUri: loginRedirectUrl() });
+      window.liff.login();
     } catch (error) {
       console.error("[Eri Arcana LINE re-login]", error);
       showToast("無法重新登入，請關閉頁面後再試一次");
