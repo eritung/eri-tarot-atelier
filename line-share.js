@@ -293,40 +293,22 @@
 ${input.cardLines}`;
   };
 
-  const isReachableImage = (url) =>
-    new Promise((resolve) => {
-      const image = new Image();
-      const done = (value) => {
-        image.onload = null;
-        image.onerror = null;
-        window.clearTimeout(timer);
-        resolve(value);
-      };
-      /*
-       * 手機瀏覽器只在使用者點擊後的短暫時間內允許開啟聊天室選擇視窗，
-       * 圖片檢查太久會讓分享視窗被瀏覽器攔截，因此縮短等待時間。
-       */
-      const timer = window.setTimeout(() => done(false), 1200);
-      image.onload = () => done(true);
-      image.onerror = () => done(false);
-      image.src = url;
-    });
-
-  const resolveCardImages = async (payload) => {
-    const cards = await Promise.all(
-      payload.cards.map(async (card) => {
-        const fallback = fallbackImageUrl(
-          card.name,
-          card.orientation,
-          card.imageDeck,
-        );
-        if (card.imageUrl === fallback) return card;
-        const works = await isReachableImage(card.imageUrl);
-        return { ...card, imageUrl: works ? card.imageUrl : fallback };
-      }),
-    );
-    return { ...payload, cards };
-  };
+  /*
+   * shareTargetPicker 會開啟 LINE 子視窗。按下分享後若先等待圖片
+   * 網路檢查，手機瀏覽器可能在視窗開啟前丟失這次點擊。
+   * 直接使用網站已內建的公開 HTTPS 分享圖，不在點擊後做非同步檢查。
+   */
+  const prepareCardImages = (payload) => ({
+    ...payload,
+    cards: payload.cards.map((card) => ({
+      ...card,
+      imageUrl: fallbackImageUrl(
+        card.name,
+        card.orientation,
+        card.imageDeck,
+      ),
+    })),
+  });
 
   const buildFlexMessage = (payload) => {
     const homeUrl = getHomeUrl();
@@ -542,7 +524,7 @@ ${input.cardLines}`;
       return "LINE 登入狀態已失效，請重新登入後再試一次。";
     }
     if (code === "EXCEPTION_IN_SUBWINDOW") {
-      return "LINE 選擇視窗已逾時，請關閉後再按一次分享。";
+      return "LINE 分享視窗未完成；抽牌結果已保留，請回到本頁再按一次分享。";
     }
     return error?.message || "LINE 分享暫時無法使用";
   };
@@ -562,6 +544,8 @@ ${input.cardLines}`;
       return;
     }
 
+    // 在任何登入、圖片處理或子視窗操作前先保留結果。
+    savePending(rawPayload);
     shareBusy = true;
     updateShareButtons(true, "準備 LINE 卡片…");
 
@@ -569,7 +553,6 @@ ${input.cardLines}`;
       await initializeLiff();
 
       if (!window.liff.isLoggedIn()) {
-        savePending(rawPayload);
         updateShareButtons(true, "前往 LINE 登入…");
         // 讓 LINE 使用 Console 設定的 Endpoint URL，避免自訂回跳網址
         // 不在 Endpoint 路徑下時顯示「找不到頁面」。
@@ -583,7 +566,7 @@ ${input.cardLines}`;
         );
       }
 
-      const payload = await resolveCardImages(rawPayload);
+      const payload = prepareCardImages(rawPayload);
       savePending(payload);
       const result = await window.liff.shareTargetPicker(
         [
