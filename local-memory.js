@@ -88,7 +88,9 @@
 
   const collectSettings = () => {
     const patch = {};
-    const spread = selectedText(".spread-option.is-active strong");
+    const spread =
+      document.querySelector(".spread-select")?.selectedOptions?.[0]
+        ?.textContent?.trim() || "";
     const deck = selectedText(".deck-option.is-active strong");
     const deckScope = selectedText(".scope-option.is-active strong");
     const reverse = document.querySelector(".toggle-row input");
@@ -111,6 +113,8 @@
     const prototype =
       element instanceof HTMLTextAreaElement
         ? HTMLTextAreaElement.prototype
+        : element instanceof HTMLSelectElement
+          ? HTMLSelectElement.prototype
         : HTMLInputElement.prototype;
     const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
     setter?.call(element, value);
@@ -140,7 +144,13 @@
 
   const restoreVisibleSettings = () => {
     const settings = readSettings();
-    clickMatchingOption(".spread-option", settings.spread);
+    const spreadSelect = document.querySelector(".spread-select");
+    if (spreadSelect && settings.spread) {
+      const option = [...spreadSelect.options].find(
+        (item) => item.textContent?.trim() === settings.spread,
+      );
+      if (option) setControlledValue(spreadSelect, option.value);
+    }
     clickMatchingOption(".deck-option", settings.deck);
     clickMatchingOption(".scope-option", settings.deckScope);
 
@@ -449,7 +459,7 @@
   document.addEventListener(
     "change",
     (event) => {
-      if (event.target.matches(".toggle-row input")) {
+      if (event.target.matches(".toggle-row input, .spread-select")) {
         window.setTimeout(collectSettings, 0);
       }
     },
