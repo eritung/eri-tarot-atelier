@@ -143,6 +143,7 @@
   };
 
   const restoreVisibleSettings = () => {
+    if (document.querySelector(".spread-dropdown.is-open")) return;
     const settings = readSettings();
     const spreadSelect = document.querySelector(".spread-select");
     if (spreadSelect && settings.spread) {
@@ -469,6 +470,13 @@
   document.addEventListener(
     "click",
     (event) => {
+      const spreadOption = event.target.closest(
+        ".spread-dropdown-menu .spread-option",
+      );
+      if (spreadOption) {
+        const spread = spreadOption.querySelector("strong")?.textContent?.trim();
+        if (spread) writeSettings({ spread });
+      }
       if (
         event.target.closest(
           ".spread-option, .deck-option, .scope-option, .primary-button, .step-back",
